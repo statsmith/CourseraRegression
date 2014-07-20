@@ -1,0 +1,296 @@
+---
+title: "Coursera Regression Assignment"
+author: "David Smith"
+date: "Thursday, July 17, 2014"
+output: word_document
+---
+
+Executive Summary
+==================
+Miles per gallon (MPG) as a function of transmission type depends upon vehicle weight.  In general, vehicles with a manual transmission weigh less and get more MPG than vehicles with an automatic transmission.  However, due to the interaction between vehicle weight and transmission, heavy vehicles (>3000 Lbs) with a manual transmission are likely to get worse gas mileage than heavy vehicles (>3000 Lbs) with an automatic transmission.  
+
+Specifically, the expected difference in gas mileage between manual and automatic transmission cars at light, medium, and high vehicle weights are shown below:  
+
+* Light (2000 Lbs):     Manual ~ 4.3 MPG Better Than Automatic
+* Medium (3000 Lbs):    Manual MPG and Automatic MPG Approximately Equal
+* Heavy (4000 Lbs):     Automatic ~ 6.3 MPG Better Than Manual
+
+In addition to the predicted difference in gas mileage, the *relationship* between gas mileage and vehicle weight for each type of transmission are as follows:
+
+* Manual Transmissions:      Lose ~ 9.1 MPG for every additional 1000 LBS
+* Automatic Transmissions:   Lose ~ 3.8 MPG for every additional 1000 LBS
+
+Method
+========
+* Explore with pairs plot of all bivariate relationships between variables
+* Fit full model with all explanatory variables to ID potential important variables
+* Sequentially fit nested models and compare for importance / significance
+* Run diagnostics on "best" model
+* Calculate confidence intervals for coefficients and predictions (at specified wieghts)
+
+
+```{r GetAndCleanData, echo=FALSE, results="hide"}
+# Get and Clean Data
+data(mtcars)
+
+names(mtcars)<-c("MPG","Cylinders","Displacement","Horsepower","Rear.Axle.Ratio","Weight","Quarter.Mile.Time","VS","Transmission","Gears","Carburetors")
+
+mtcars$Transmission<-factor(mtcars$Transmission,levels=c(0,1),labels=c("Automatic","Manual"))
+
+mtcars$VS<-factor(mtcars$VS,levels=c(0,1))
+head(mtcars)
+```
+
+
+Results
+=========
+
+```{r BestModel, echo=FALSE}
+# Determined By Evaluating Nested Models (See Appendix)
+myFit3<- lm(MPG ~ Weight + Transmission + Weight*Transmission, data = mtcars)
+# Get R-Sq Value
+myRSq2<-round(100*summary(myFit3)$r.squared,1)
+out<-summary(myFit3)
+
+```
+The final, parsimonious, best-fitting model includes terms for the weight, type of transmission, and the interaction between weight and transmission.  It accounts for `r myRSq2`% of the variation in MPG.  The figure below visually summarizes the relationship between MPG and weight for each type of transmission.
+```{r Plot1, echo=FALSE, fig.height=3.7}
+# Make Subsets
+mtcarsAuto<-mtcars[mtcars$Transmission=="Automatic",]
+mtcarsManual<-mtcars[mtcars$Transmission=="Manual",]
+ 
+# Fit Subsets
+autoFit<-lm(MPG ~ Weight, data=mtcarsAuto)
+manualFit<-lm(MPG ~ Weight, data=mtcarsManual)
+
+# Plot
+par(mfrow=c(1,1))
+plot(mtcars$Weight,mtcars$MPG,col=mtcars$Transmission,xlim=c(0,6),ylim=c(0,50))
+abline(autoFit,col="black")
+abline(manualFit,col="red")
+
+text(x=4.5,y=40,labels=c("Manual = Red"),col="red",cex=0.75,pos=4)
+text(x=4.5,y=37,labels=c("Automatic = Black"),col="black",cex=0.75,pos=4)
+
+```
+
+Predictions and the corresponding uncertainty associated with the predictions are given below at three different weights for each type of transmission.  
+```{r Predictions, echo=FALSE}
+new<-data.frame(Transmission=c(rep("Manual",3),rep("Automatic",3)),
+                Weight=as.numeric(c(rep(c("2","3","4"),2))))
+
+myPredict<-cbind(new,as.data.frame(round(predict(myFit3,new,interval="confidence"),1)))
+names(myPredict)<-c("Transmission","Weight","Estimated MPG","Lower 95% Level","Upper 95% Level")
+myPredict$Weight<-myPredict$Weight*1000
+myPredict
+
+```
+
+Note that there is little to no overalap in the 95% confidence intervals between the manual and automatic transmissions at 2000 LBS and 4000 LBS, suggesting that there is a significant difference in MPG at these weights.  At 3000 LBS, the 95% confidence intervals largely overlap, indicating that there is no significant difference in MPG at this weight.  
+
+Confidence intervals for the regression coefficients are also provided (below).  
+```{r BetasCI}
+myBetas<-cbind(data.frame(round(myFit3$coefficients,1)),round(confint(myFit3),1))
+names(myBetas)<-c("Estimate","Lower 95% Level","Upper 95% Level")
+myBetas
+```
+
+The intercept for automatic transmissions is ~ 31.4 MPG (at the nonsensical 0 LBS), while the intercept for manual transmissions is ~ 14.9 MPG higher, or 46.3 MPG.  The slope for automatic transmissions is approximately -3.8 MPG per 1000 LBS, while it is about -9.1 MPG per additional 1000 LBS.
+
+Diagnostics for this model are shown in the appendix.
+
+
+Appendix
+=========
+ 
+
+```{r Explore, echo=FALSE}
+# From help(cor)
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+pairs(mtcars, lower.panel=panel.cor,upper.panel=panel.smooth)
+
+```
+
+Visually, it looks like MPG is related to everything!  
+
+* MPG appears to decrease with cylinders, displacement, horsepower, weight, and carburetors...
+
+* MPG appears to increase with Rear Axle Ratio, Quarter Mile Time, VS, Transmission (1=Manual) and perhaps Gears (from 3 to 4).
+
+Next , running the full model (MPG ~ .) yields the following output:
+
+```{r FitFullModel, echo=FALSE, results="hide"}
+myFit <- lm(MPG ~ ., data = mtcars)
+summary(myFit)
+pWeight<-round(summary(myFit)$coefficients[39],3)
+pTransmission<-round(summary(myFit)$coefficients[42],3)
+
+```
+
+When we fit everything in the model, none of the beta coefficients are significant at 95% confidence (i.e. p<0.05).  Regardless, weight (p=`r pWeight`) is the closest thing to being significant at 95% confidence, followed by transmission (p=`r pTransmission`).
+
+Obviously we need to include transmission since that is the primary variable of interest in this analysis.  Therefore, let's model miles per gallon as a function of transmission and then as a function of transmission and weight.  
+
+```{r CompareModels1, echo=FALSE, results="hide"}
+# Compare Models
+myFit1<- lm(MPG ~ Transmission, data = mtcars)
+myFit2<- lm(MPG ~ Weight + Transmission, data = mtcars)
+anova(myFit1,myFit2)
+
+# Get pValue
+myPValue<-anova(myFit1,myFit2)$"Pr(>F)"[2]
+
+# Get R-Sq Value
+myRSq<-round(100*summary(myFit2)$r.squared,1)
+```
+
+Comparing the models suggests that we need to account for (adjust for) weight in the model to get a better read on the relationship between miles per gallon and transmission (p=`r myPValue`).  Also note that this model accounts for ~ `r myRSq`% of the variability in miles per gallon.
+
+A plot of MPG as a function of weight (by type of transmission) follows.
+
+
+
+From the plot, it looks like there is an interaction between transmission and weight.  Therefore, it is worthwhile to compare the model with the interaction to the additive model.
+
+```{r Interaction, echo=FALSE, results="hide"}
+myFit3<- lm(MPG ~ Weight + Transmission + Weight*Transmission, data = mtcars)
+anova(myFit1,myFit2,myFit3)
+
+# Get pValue
+myPValue2<-anova(myFit1,myFit2,myFit3)$"Pr(>F)"[3]
+
+# Get R-Sq Value
+myRSq2<-round(100*summary(myFit3)$r.squared,1)
+
+
+```
+
+The interaction between weight and transmission does add significantly to the model (p=`r myPValue2`).  The model is therefore updated, and now accounts for ~ `r myRSq2`% of the variation in miles per gallon.
+
+Although not shown in the output, exploring the addition of other variables (Cylinders, Displacement, Horsepower, Rear.Axle.Ratio, VS, Gears, and Carburetors) via nested model comparisions suggests that the current model is the most parsimoniouos (i.e. explains a great deal of variation in MPG with few variables).
+
+
+```{r Add Horsepower, echo=FALSE,, results="hide"}
+myFit4<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4)
+
+# Get pValue
+myPValue3<-anova(myFit1,myFit2,myFit3,myFit4)$"Pr(>F)"[4]
+
+# Get R-Sq Value
+myRSq3<-round(100*summary(myFit4)$r.squared,1)
+
+```
+
+Horsepower might add significantly to the model (p=`r myPValue3`), but not substantially.  The model with the addition of horsepower accounts for ~ `r myRSq3`% of the variation in miles per gallon.
+
+
+```{r Add.Cylinders, echo=FALSE,, results="hide"}
+myFit5<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower + Cylinders, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+Cylinders does not merit inclusion in the model...
+
+```{r Add.Displacement, echo=FALSE,, results="hide"}
+myFit5<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower + Displacement, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+Displacement does not merit inclusion in the model...
+
+```{r Add.Rear.Axle.Ratio, echo=FALSE, results="hide"}
+myFit5<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower + Rear.Axle.Ratio, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+Rear.Axle.Ratio does not merit inclusion in the model...
+
+Note: much like miles per gallon, quarter mile time should be considered a response variable that is a function of the design (factors) of the cars.  Therefore, no attempt is made to model MPG as a function of quarter mile time.
+
+
+```{r Add.VS, echo=FALSE, results="hide"}
+myFit5<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower + VS, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+VS does not merit inclusion in the model
+
+```{r Add.Gears, echo=FALSE, results="hide"}
+myFit5<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower + Gears, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+Gears does not merit inclusion in the model
+
+```{r Add.Carburetors, echo=FALSE, results="hide"}
+myFit5<-lm(MPG~Transmission + Weight + Transmission*Weight + Horsepower + Carburetors, data=mtcars)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+Carburetors does not merit inclusion in the model
+
+```{r Weight^2, echo=FALSE, results="hide"}
+
+myFit10<-lm(MPG ~ Weight + Transmission + Weight * Transmission, data=mtcars)
+summary(myFit10)
+anova(myFit1,myFit2,myFit3,myFit4,myFit5)
+
+```
+
+
+```{r Diagnostics2, echo=FALSE}
+rstudent(myFit3)
+dfbetas(myFit3)
+hatvalues(myFit3)
+resid(myFit3) / (1 - hatvalues(myFit3))
+cooks.distance(myFit3)
+
+par(mfrow=c(2,2))
+plot(myFit3)
+
+
+# Confidence Intervals for Betas
+#confint(autoFit)
+#confint(manualFit)
+confint(myFit3)
+
+```
+
+
+Diagnostics suggest that the Fiat 128, Toyota Corolla, and Chrysler Imperial have large residuals (even if they don't have high leverage) relative to the other vehicles, and  distort the normality of the residuals.  
+
+Note that all three of these vehicles get more miles per gallon than would be expected based on weight and transmission.  
+
+
+
+mpg = Miles Per US Gallon of Gas
+cyl = Number of Cylinders
+disp = Displacement (Cubic Inches)
+hp = Horsepower
+drat = Rear Axle Ratio
+wt = Weight (LB/1000)
+qsec = 1/4 Mile Time
+vs = V/S ... I Have No Idea What This Is, But it is Clearly Binary
+am = Transmission (0 = Automatic, 1 = Manual)
+gear = Number of Forward Gears
+carb = Number of Carburetors
+
+Henderson and Velleman (1981), Building multiple regression models interactively. Biometrics, 37, 391-411
+
+

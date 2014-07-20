@@ -1,0 +1,129 @@
+---
+title: "Coursera Regression Assignment"
+author: "David Smith"
+date: "Thursday, July 17, 2014"
+output: word_document
+---
+
+Executive Summary
+==================
+Miles per gallon (MPG) as a function of transmission type depends upon vehicle weight.  In general, vehicles with a manual transmission weigh less and get more MPG than vehicles with an automatic transmission.  However, due to the interaction between vehicle weight and transmission, heavy vehicles (>3000 Lbs) with a manual transmission are likely to get worse gas mileage than heavy vehicles (>3000 Lbs) with an automatic transmission.  
+
+Specifically, the expected difference in gas mileage between manual and automatic transmission cars at light, medium, and high vehicle weights are shown below:  
+
+* Light (2000 Lbs):     Manual ~ 4.3 MPG Better Than Automatic
+* Medium (3000 Lbs):    Manual MPG and Automatic MPG Approximately Equal
+* Heavy (4000 Lbs):     Automatic ~ 6.3 MPG Better Than Manual
+
+In addition to the predicted difference in gas mileage, the *relationship* between gas mileage and vehicle weight for each type of transmission are as follows:
+
+* Manual Transmissions:      Lose ~ 9.1 MPG for every additional 1000 LBS
+* Automatic Transmissions:   Lose ~ 3.8 MPG for every additional 1000 LBS
+
+Method
+========
+* Explore with pairs plot of all bivariate relationships between variables (Appendix)
+* Explore full model with all explanatory variables to ID potentially important variables
+* Sequentially fit nested models (with anova) and compare for importance / significance
+* Run diagnostics on "best" model - diagnostic plots, dffits, dfbetas, hatvalues, PRESS
+* Calculate confidence intervals for coefficients and predictions (at specified weights)
+
+
+```{r GetAndCleanData, echo=FALSE, results="hide"}
+# Get and Clean Data
+data(mtcars)
+
+names(mtcars)<-c("MPG","Cylinders","Displacement","Horsepower","Rear.Axle.Ratio","Weight","Quarter.Mile.Time","VS","Transmission","Gears","Carburetors")
+
+mtcars$Transmission<-factor(mtcars$Transmission,levels=c(0,1),labels=c("Automatic","Manual"))
+
+mtcars$VS<-factor(mtcars$VS,levels=c(0,1))
+head(mtcars)
+```
+
+
+Results
+=========
+```{r BestModel, echo=FALSE}
+# Determined By Evaluating Nested Models (See Appendix)
+myFit3<- lm(MPG ~ Weight + Transmission + Weight*Transmission, data = mtcars)
+# Get R-Sq Value
+myRSq2<-round(100*summary(myFit3)$r.squared,1)
+out<-summary(myFit3)
+
+```
+The final, parsimonious, best-fitting model includes terms for the weight, type of transmission, and the interaction between weight and transmission.  It accounts for `r myRSq2`% of the variation in MPG.  The figure below visually summarizes the relationship between MPG and weight for each type of transmission.
+```{r Plot1, echo=FALSE, fig.height=3.7}
+# Make Subsets
+mtcarsAuto<-mtcars[mtcars$Transmission=="Automatic",]
+mtcarsManual<-mtcars[mtcars$Transmission=="Manual",]
+ 
+# Fit Subsets
+autoFit<-lm(MPG ~ Weight, data=mtcarsAuto)
+manualFit<-lm(MPG ~ Weight, data=mtcarsManual)
+
+# Plot
+par(mfrow=c(1,1))
+plot(mtcars$Weight,mtcars$MPG,col=mtcars$Transmission,xlim=c(0,6),ylim=c(0,50),xlab="Weight (1000/LBS)",ylab="Miles Per Gallon (MPG)")
+abline(autoFit,col="black")
+abline(manualFit,col="red")
+
+text(x=4.5,y=40,labels=c("Manual = Red"),col="red",cex=0.75,pos=4)
+text(x=4.5,y=37,labels=c("Automatic = Black"),col="black",cex=0.75,pos=4)
+
+```
+Predictions and their corresponding uncertainty are given below at three different weights for each type of transmission.  
+```{r Predictions, echo=FALSE}
+new<-data.frame(Transmission=c(rep("Manual",3),rep("Automatic",3)),
+                Weight=as.numeric(c(rep(c("2","3","4"),2))))
+
+myPredict<-cbind(new,as.data.frame(round(predict(myFit3,new,interval="confidence"),1)))
+names(myPredict)<-c("Transmission","Weight","Estimated MPG","Lower 95% Level","Upper 95% Level")
+myPredict$Weight<-myPredict$Weight*1000
+myPredict
+
+```
+
+Note that there is little to no overalap in the 95% confidence intervals between the manual and automatic transmissions at 2000 LBS and 4000 LBS, suggesting that there is a significant difference in MPG at these weights.  At 3000 LBS, the 95% confidence intervals largely overlap, indicating that there is no significant difference in MPG at this weight.  
+
+Confidence intervals for the regression coefficients are also provided (below).  
+```{r BetasCI, echo=FALSE}
+myBetas<-cbind(data.frame(round(myFit3$coefficients,1)),round(confint(myFit3),1))
+names(myBetas)<-c("Estimate","Lower 95% Level","Upper 95% Level")
+myBetas
+```
+
+The intercept for automatic transmissions is ~ 31.4 MPG (at the nonsensical 0 LBS), while the intercept for manual transmissions is ~ 14.9 MPG higher, or 46.3 MPG.  The slope for automatic transmissions is approximately -3.8 MPG per 1000 LBS, while it is about -9.1 MPG per additional 1000 LBS. Diagnostics for this model are shown in the appendix.
+
+
+Appendix
+=========
+ 
+
+```{r Explore, echo=FALSE, fig.height=6,  fig.width=6}
+# From help(cor)
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+pairs(mtcars, lower.panel=panel.cor,upper.panel=panel.smooth)
+
+```
+
+
+
+```{r Diagnostics2, echo=FALSE, fig.width=6,fig.height=6}
+
+par(mfrow=c(2,2))
+plot(myFit3)
+
+
+```
+
+
